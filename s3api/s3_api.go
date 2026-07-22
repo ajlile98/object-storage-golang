@@ -3,6 +3,7 @@ package s3api
 import (
 	"encoding/xml"
 	"errors"
+	"io"
 	"net/http"
 	"object-storage-golang/object"
 	"object-storage-golang/storage"
@@ -15,14 +16,6 @@ type s3ErrorResponse struct {
 	Resource string   `xml:"Resource,omitempty"`
 }
 
-type ErrorResponder func(
-	w http.ResponseWriter,
-	r *http.Request,
-	status int,
-	code string,
-	message string,
-)
-
 func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucket := r.PathValue("bucket")
@@ -33,7 +26,8 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		_, checksum, err := service.Blobs.Put(r.Context(), bucket+"/"+key, r.Body)
+		// _, checksum, err := service.Blobs.Put(r.Context(), bucket+"/"+key, r.Body)
+		result, err := service.Upload(r.Context(), bucket+"/"+key, r.Body)
 		if err != nil {
 			switch {
 			case errors.Is(err, storage.ErrInvalidKey):
@@ -46,12 +40,55 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("ETag", `"`+checksum+`"`)
+		w.Header().Set("ETag", `"`+result.Checksum+`"`)
 		w.WriteHeader(http.StatusOK)
 	}
 }
 
-func writeS3Error(w http.ResponseWriter, status int, code, message, resource string) {
+func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		bucket := r.PathValue("bucket")
+		key := r.PathValue("key")
+		resource := r.URL.Path
+		if bucket == "" || key == "" {
+			writeS3Error(w, http.StatusBadRequest, "InvalidRequest", "bucket and object key are required", resource)
+			return
+		}
+
+		body, err := service.Read(r.Context(), bucket+"/"+key)
+		if err != nil {
+			// Translate the error to an S3 XML response.
+			// Eventually, distinguish not found from internal errors.
+			writeS3Error(
+				w,
+				http.StatusInternalServerError,
+				"InternalError",
+				"failed to read object",
+				resource,
+			)
+			return
+		}
+
+		defer body.Close()
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+
+		if _, err := io.Copy(w, body); err != nil {
+			 // The client may have disconnected during the stream.
+    		// At this point headers/body may already be sent, so do not write an S3 error response.
+			return
+		}
+		
+	}
+}
+
+func writeS3Error(
+	w http.ResponseWriter,
+	status int,
+	code,
+	message,
+	resource string,
+) {
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(status)
 	_ = xml.NewEncoder(w).Encode(s3ErrorResponse{
@@ -59,4 +96,14 @@ func writeS3Error(w http.ResponseWriter, status int, code, message, resource str
 		Message:  message,
 		Resource: resource,
 	})
+}
+
+func WriteS3HTTPError(
+	w http.ResponseWriter,
+	r *http.Request,
+	status int,
+	code string,
+	message string,
+) {
+	writeS3Error(w, status, code, message, r.URL.Path)
 }

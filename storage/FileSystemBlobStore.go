@@ -64,8 +64,22 @@ func (store *FileSystemBlobStore) Get(
 	ctx context.Context,
 	key string,
 ) (io.ReadCloser, error) {
-	// oen and return the local file
-	return nil, nil
+	// open and return the local file
+	if err := validateKey(key); err != nil {
+		return nil, err
+	}
+	objectpath := filepath.Join(store.Root, filepath.FromSlash(key))
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(objectpath)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
 }
 
 func (store *FileSystemBlobStore) Delete(
@@ -73,6 +87,20 @@ func (store *FileSystemBlobStore) Delete(
 	key string,
 ) error {
 	// delete local file
+	if err := validateKey(key); err != nil {
+		return err
+	}
+	objectpath := filepath.Join(store.Root, filepath.FromSlash(key))
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	err := os.Remove(objectpath)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
