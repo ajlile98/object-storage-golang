@@ -50,3 +50,10 @@ func (service *ObjectService) Read(
 ) (io.ReadCloser, error) {
 	return service.blobs.Get(ctx, key)
 }
+
+func (service *ObjectService) Delete(
+	ctx context.Context,
+	key string,
+) error {
+	return service.blobs.Delete(ctx, key)
+}

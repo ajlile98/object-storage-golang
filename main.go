@@ -39,6 +39,7 @@ func main() {
 	// Register the handler function for the root path
 	mux.HandleFunc("GET /{bucket}/{key...}", s3api.S3GetObjectHandler(service))
 	mux.HandleFunc("PUT /{bucket}/{key...}", s3api.S3PutObjectHandler(service))
+	mux.HandleFunc("DELETE /{bucket}/{key...}", s3api.S3DeleteObjectHandler(service))
 
 	fmt.Println("Server starting on http://localhost:8080")
 

@@ -58,7 +58,16 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 		body, err := service.Read(r.Context(), bucket+"/"+key)
 		if err != nil {
 			// Translate the error to an S3 XML response.
-			// Eventually, distinguish not found from internal errors.
+			if errors.Is(err, storage.ErrObjectNotFound){
+				writeS3Error(
+					w,
+					http.StatusNotFound,
+					"NoSuchKey",
+					"the specified key does not exist",
+					resource,
+				)
+				return
+			}
 			writeS3Error(
 				w,
 				http.StatusInternalServerError,
@@ -74,11 +83,37 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/octet-stream")
 
 		if _, err := io.Copy(w, body); err != nil {
-			 // The client may have disconnected during the stream.
-    		// At this point headers/body may already be sent, so do not write an S3 error response.
+			// The client may have disconnected during the stream.
+			// At this point headers/body may already be sent, so do not write an S3 error response.
 			return
 		}
-		
+
+	}
+}
+
+func S3DeleteObjectHandler(service *object.ObjectService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		bucket := r.PathValue("bucket")
+		key := r.PathValue("key")
+		resource := r.URL.Path
+		if bucket == "" || key == "" {
+			writeS3Error(w, http.StatusBadRequest, "InvalidRequest", "bucket and object key are required", resource)
+			return
+		}
+
+		err := service.Delete(r.Context(), bucket+"/"+key)
+		if err != nil {
+			writeS3Error(
+				w,
+				http.StatusInternalServerError,
+				"InternalError",
+				"failed to delete object",
+				resource,
+			)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -76,6 +77,9 @@ func (store *FileSystemBlobStore) Get(
 
 	file, err := os.Open(objectpath)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, ErrObjectNotFound
+		}
 		return nil, err
 	}
 
@@ -98,6 +102,9 @@ func (store *FileSystemBlobStore) Delete(
 
 	err := os.Remove(objectpath)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
 
@@ -105,35 +112,35 @@ func (store *FileSystemBlobStore) Delete(
 }
 
 func validateKey(key string) error {
-    if key == "" {
-        return ErrInvalidKey
-    }
+	if key == "" {
+		return ErrInvalidKey
+	}
 
-    // Object keys always use '/', even when the server runs on Windows.
-    if strings.Contains(key, `\`) {
-        return ErrInvalidKey
-    }
+	// Object keys always use '/', even when the server runs on Windows.
+	if strings.Contains(key, `\`) {
+		return ErrInvalidKey
+	}
 
-    // Reject absolute paths such as "/secret.txt".
-    if strings.HasPrefix(key, "/") {
-        return ErrInvalidKey
-    }
+	// Reject absolute paths such as "/secret.txt".
+	if strings.HasPrefix(key, "/") {
+		return ErrInvalidKey
+	}
 
-    // Reject Windows paths such as "C:/secret.txt".
-    if filepath.IsAbs(key) || filepath.VolumeName(key) != "" {
-        return ErrInvalidKey
-    }
+	// Reject Windows paths such as "C:/secret.txt".
+	if filepath.IsAbs(key) || filepath.VolumeName(key) != "" {
+		return ErrInvalidKey
+	}
 
-    for _, segment := range strings.Split(key, "/") {
-        if segment == "" || segment == "." || segment == ".." {
-            return ErrInvalidKey
-        }
-    }
+	for _, segment := range strings.Split(key, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return ErrInvalidKey
+		}
+	}
 
-    // Defense in depth: cleaning must not change the accepted key.
-    if path.Clean(key) != key {
-        return ErrInvalidKey
-    }
+	// Defense in depth: cleaning must not change the accepted key.
+	if path.Clean(key) != key {
+		return ErrInvalidKey
+	}
 
-    return nil
+	return nil
 }
