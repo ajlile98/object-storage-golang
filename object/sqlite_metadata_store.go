@@ -14,7 +14,7 @@ type SQLiteMetadataStore struct {
 var ErrObjectNotFound = errors.New("Object Not Found")
 var ErrObjectNotCreated = errors.New("Object Not Created")
 
-func (store *SQLiteMetadataStore) CreatePending(
+func (store *SQLiteMetadataStore) Create(
 	ctx context.Context,
 	object ObjectMetadata,
 ) (ObjectMetadata, error) {
