@@ -10,17 +10,13 @@ type ObjectService struct {
 	blobs storage.BlobStore
 }
 
-// Eventually this service can revolve around Objects,
-// once metadata service is involved this makes more sense
 type Object struct {
-	Body        io.ReadCloser
-	Size        int64
-	ContentType string
-	Checksum    string
+	Metadata ObjectMetadata
+	Body     io.ReadCloser
 }
 
 type UploadResult struct {
-	Size int64
+	Size     int64
 	Checksum string
 }
 
