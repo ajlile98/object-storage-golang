@@ -11,8 +11,7 @@ type SQLiteMetadataStore struct {
 	db *sql.DB
 }
 
-var ErrObjectNotFound = errors.New("Object Not Found")
-var ErrObjectNotCreated = errors.New("Object Not Created")
+var ErrObjectNotFound = errors.New("object not found")
 
 func (store *SQLiteMetadataStore) Create(
 	ctx context.Context,
@@ -56,7 +55,7 @@ func (store *SQLiteMetadataStore) Create(
 		&persisted.CreatedAt,
 		&persisted.State,
 	); err != nil {
-		return ObjectMetadata{}, fmt.Errorf("create pending object %w", err)
+		return ObjectMetadata{}, fmt.Errorf("create pending object: %w", err)
 	}
 
 	return persisted, nil
@@ -70,18 +69,22 @@ func (store *SQLiteMetadataStore) MarkReady(
 		ctx,
 		`UPDATE objects
 		SET state = ?
-		WHERE bucket = ? AND object_key = ? AND version_id = ?`,
+		WHERE bucket = ? 
+			AND object_key = ? 
+			AND version_id = ?
+			AND state = ?`,
 		ObjectStateReady,
 		bucket,
 		key,
 		version,
+		ObjectStatePending,
 	)
 	if err != nil {
-		return fmt.Errorf("mark object read: %w", err)
+		return fmt.Errorf("mark object ready: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("count updated objects %w", err)
+		return fmt.Errorf("count updated objects: %w", err)
 	}
 	if affected == 0 {
 		return ErrObjectNotFound
@@ -94,20 +97,80 @@ func (store *SQLiteMetadataStore) Get(
 	ctx context.Context,
 	bucket, key string,
 ) (ObjectMetadata, error) {
-	return ObjectMetadata{}, nil
+	row := store.db.QueryRowContext(
+		ctx,
+		`SELECT bucket, object_key, version_id, blob_id,
+            size, content_type, checksum, created_at, state
+		FROM objects
+		WHERE bucket = ? 
+			AND object_key = ?
+			AND state = ?
+		ORDER BY created_at DESC
+		LIMIT 1`,
+		bucket,
+		key,
+		ObjectStateReady,
+	)
+	var metadata ObjectMetadata
+	err := row.Scan(
+		&metadata.Bucket,
+		&metadata.Key,
+		&metadata.VersionID,
+		&metadata.BlobID,
+		&metadata.Size,
+		&metadata.ContentType,
+		&metadata.Checksum,
+		&metadata.CreatedAt,
+		&metadata.State,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ObjectMetadata{}, ErrObjectNotFound
+	}
+	if err != nil {
+		return ObjectMetadata{}, fmt.Errorf("get object: %w", err)
+	}
+	return metadata, nil
 }
 
-func (store *SQLiteMetadataStore) GetVersion(
-	ctx context.Context,
-	bucket, key string,
-) (ObjectMetadata, error) {
-	return ObjectMetadata{}, nil
-}
+// func (store *SQLiteMetadataStore) GetVersion(
+// 	ctx context.Context,
+// 	bucket, key string,
+// ) (ObjectMetadata, error) {
+// 	return ObjectMetadata{}, nil
+// }
 
 func (store *SQLiteMetadataStore) MarkDeleted(
 	ctx context.Context,
-	bucket, key string,
+	bucket, key, version_id string,
 ) error {
+	result, err := store.db.ExecContext(ctx, `
+		UPDATE objects 
+		SET state = ?
+		WHERE bucket = ? 
+			AND object_key = ? 
+			AND version_id = ?
+			AND state = ?`,
+		ObjectStateDeleted,
+		bucket,
+		key,
+		version_id,
+		ObjectStateReady,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrObjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("mark object deleted: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count deleted objects: %w", err)
+	}
+	if affected == 0 {
+		return ErrObjectNotFound
+	}
+
 	return nil
 }
 
