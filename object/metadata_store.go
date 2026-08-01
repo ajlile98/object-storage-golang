@@ -28,7 +28,7 @@ const (
 
 type MetadataStore interface {
 	Create(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
-	MarkReady(ctx context.Context, bucket, key, version string) error
+	CompleteUpload(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
 	Get(ctx context.Context, bucket, key string) (ObjectMetadata, error)
 	// GetVersion(ctx context.Context, bucket, key, versionID string) (ObjectMetadata, error)
 	MarkDeleted(ctx context.Context, bucket, key, version_id string) error

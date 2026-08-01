@@ -2,12 +2,16 @@ package object
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"object-storage-golang/storage"
 )
 
 type ObjectService struct {
-	blobs storage.BlobStore
+	blobs         storage.BlobStore
+	metadataStore MetadataStore
 }
 
 type Object struct {
@@ -16,28 +20,54 @@ type Object struct {
 }
 
 type UploadResult struct {
-	Size     int64
-	Checksum string
+	Metadata ObjectMetadata
 }
 
-func NewObjectService(blobs storage.BlobStore) *ObjectService {
-	return &ObjectService{blobs: blobs}
+func NewObjectService(
+	blobs storage.BlobStore,
+	metadataStore MetadataStore,
+) *ObjectService {
+	return &ObjectService{blobs: blobs, metadataStore: metadataStore}
 }
 
 func (service *ObjectService) Upload(
 	ctx context.Context,
+	bucket string,
 	key string,
+	contentType string,
 	body io.Reader,
-) (UploadResult, error) {
-	size, checksum, err := service.blobs.Put(ctx, key, body)
+) (ObjectMetadata, error) {
+
+	versionID, err := newID()
 	if err != nil {
-		return UploadResult{0, ""}, err
+		return ObjectMetadata{}, err
 	}
 
-	// Persist object metadata: key, size, checksum, state, etc.
-	_ = size
-	_ = checksum
-	return UploadResult{Size: size, Checksum: checksum}, nil
+	blobID, err := newID()
+	if err != nil {
+		return ObjectMetadata{}, err
+	}
+
+	pending, err := service.metadataStore.Create(ctx, ObjectMetadata{
+		Bucket:      bucket,
+		Key:         key,
+		VersionID:   versionID,
+		BlobID:      blobID,
+		ContentType: contentType,
+	})
+	if err != nil {
+		return ObjectMetadata{}, err
+	}
+
+	size, checksum, err := service.blobs.Put(ctx, blobID, body)
+	if err != nil {
+		return ObjectMetadata{}, err
+	}
+
+	pending.Size = size
+	pending.Checksum = checksum
+
+	return service.metadataStore.CompleteUpload(ctx, pending)
 }
 
 func (service *ObjectService) Read(
@@ -52,4 +82,13 @@ func (service *ObjectService) Delete(
 	key string,
 ) error {
 	return service.blobs.Delete(ctx, key)
+}
+
+func newID() (string, error) {
+	bytes := make([]byte, 16) // 128 random bits
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate identifier: %w", err)
+	}
+
+	return hex.EncodeToString(bytes), nil
 }

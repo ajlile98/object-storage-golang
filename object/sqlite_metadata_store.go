@@ -24,15 +24,15 @@ func (store *SQLiteMetadataStore) Create(
             size, content_type, checksum, state
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING
-        	bucket,
-        	object_key,
-        	version_id,
-        	blob_id,
-        	size,
-        	content_type,
-        	checksum,
-        	created_at,
-        	state`,
+		bucket,
+		object_key,
+		version_id,
+		blob_id,
+			size,
+		content_type,
+			checksum,
+		created_at,
+		state`,
 		object.Bucket,
 		object.Key,
 		object.VersionID,
@@ -61,36 +61,57 @@ func (store *SQLiteMetadataStore) Create(
 	return persisted, nil
 }
 
-func (store *SQLiteMetadataStore) MarkReady(
+func (store *SQLiteMetadataStore) CompleteUpload(
 	ctx context.Context,
-	bucket, key, version string,
-) error {
-	result, err := store.db.ExecContext(
+	object ObjectMetadata,
+) (ObjectMetadata, error) {
+	row := store.db.QueryRowContext(
 		ctx,
 		`UPDATE objects
-		SET state = ?
+		SET size = ?,
+			checksum = ?,
+			state = ?
 		WHERE bucket = ? 
 			AND object_key = ? 
 			AND version_id = ?
-			AND state = ?`,
+			AND state = ?
+		RETURNING
+            bucket,
+            object_key,
+            version_id,
+            blob_id,
+            size,
+            content_type,
+            checksum,
+            created_at,
+            state`,
+		object.Size,
+		object.Checksum,
 		ObjectStateReady,
-		bucket,
-		key,
-		version,
+		object.Bucket,
+		object.Key,
+		object.VersionID,
 		ObjectStatePending,
 	)
-	if err != nil {
-		return fmt.Errorf("mark object ready: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("count updated objects: %w", err)
-	}
-	if affected == 0 {
-		return ErrObjectNotFound
-	}
 
-	return nil
+	var persisted ObjectMetadata
+	if err := row.Scan(
+		&persisted.Bucket,
+		&persisted.Key,
+		&persisted.VersionID,
+		&persisted.BlobID,
+		&persisted.Size,
+		&persisted.ContentType,
+		&persisted.Checksum,
+		&persisted.CreatedAt,
+		&persisted.State,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ObjectMetadata{}, ErrObjectNotFound
+		}
+		return ObjectMetadata{}, fmt.Errorf("complete upload: %w", err)
+	}
+	return persisted, nil
 }
 
 func (store *SQLiteMetadataStore) Get(

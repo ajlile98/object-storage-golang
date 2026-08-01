@@ -26,8 +26,19 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+
 		// _, checksum, err := service.Blobs.Put(r.Context(), bucket+"/"+key, r.Body)
-		result, err := service.Upload(r.Context(), bucket+"/"+key, r.Body)
+		metadata, err := service.Upload(
+			r.Context(),
+			bucket,
+			key,
+			contentType,
+			r.Body,
+		)
 		if err != nil {
 			switch {
 			case errors.Is(err, storage.ErrInvalidKey):
@@ -40,7 +51,7 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("ETag", `"`+result.Checksum+`"`)
+		w.Header().Set("ETag", `"`+metadata.Checksum+`"`)
 		w.WriteHeader(http.StatusOK)
 	}
 }
