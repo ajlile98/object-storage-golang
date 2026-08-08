@@ -72,6 +72,7 @@ func (service *ObjectService) Upload(
 
 func (service *ObjectService) Read(
 	ctx context.Context,
+	bucket,
 	key string,
 ) (io.ReadCloser, error) {
 	return service.blobs.Get(ctx, key)
@@ -79,6 +80,7 @@ func (service *ObjectService) Read(
 
 func (service *ObjectService) Delete(
 	ctx context.Context,
+	bucket,
 	key string,
 ) error {
 	return service.blobs.Delete(ctx, key)
