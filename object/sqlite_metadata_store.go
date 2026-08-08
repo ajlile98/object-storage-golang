@@ -205,7 +205,7 @@ func (store *SQLiteMetadataStore) Initialize(ctx context.Context) error {
             size INTEGER NOT NULL,
             content_type TEXT NOT NULL,
             checksum TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             state TEXT NOT NULL DEFAULT 'pending',
             PRIMARY KEY (bucket, object_key, version_id)
         )
