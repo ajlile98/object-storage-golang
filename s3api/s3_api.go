@@ -69,7 +69,7 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 		body, err := service.Read(r.Context(), bucket+"/"+key)
 		if err != nil {
 			// Translate the error to an S3 XML response.
-			if errors.Is(err, storage.ErrObjectNotFound){
+			if errors.Is(err, storage.ErrObjectNotFound) {
 				writeS3Error(
 					w,
 					http.StatusNotFound,
