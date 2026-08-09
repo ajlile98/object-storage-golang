@@ -38,9 +38,9 @@ func TestObjectUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer object.Close()
+	defer object.Body.Close()
 
-	got, err := io.ReadAll(object)
+	got, err := io.ReadAll(object.Body)
 	if err != nil {
 		t.Fatal(err)
 	}

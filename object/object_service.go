@@ -74,8 +74,20 @@ func (service *ObjectService) Read(
 	ctx context.Context,
 	bucket,
 	key string,
-) (io.ReadCloser, error) {
-	return service.blobs.Get(ctx, key)
+) (Object, error) {
+	objectMetadata, err := service.metadataStore.Get(ctx, bucket, key)
+	if err != nil {
+		return Object{}, fmt.Errorf("read object metadata %s/%s: %w", bucket, key, err)
+	}
+	
+	objectData, err := service.blobs.Get(ctx, objectMetadata.BlobID)
+	if err != nil {
+		return Object{}, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
+	}
+	return Object{
+		Metadata: objectMetadata,
+		Body: objectData,
+	}, nil
 }
 
 func (service *ObjectService) Delete(
@@ -83,7 +95,11 @@ func (service *ObjectService) Delete(
 	bucket,
 	key string,
 ) error {
-	return service.blobs.Delete(ctx, key)
+	err := service.metadataStore.MarkDeleted(ctx, bucket, key, "")
+	if err != nil {
+		return fmt.Errorf("mark object deleted %s/%s: %w", bucket, key, err)
+	}
+	return nil
 }
 
 func newID() (string, error) {

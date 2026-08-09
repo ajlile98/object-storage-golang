@@ -7,9 +7,9 @@ import (
 )
 
 type BlobStore interface {
-	Put(ctx context.Context, key string, data io.Reader) (size int64, checksum string, err error)
-	Get(ctx context.Context, key string) (io.ReadCloser, error)
-	Delete(ctx context.Context, key string) error
+	Put(ctx context.Context, blobID string, data io.Reader) (size int64, checksum string, err error)
+	Get(ctx context.Context, blobID string) (io.ReadCloser, error)
+	Delete(ctx context.Context, blobID string) error
 }
 
 var ErrObjectNotFound = errors.New("object not found")

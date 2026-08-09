@@ -66,7 +66,7 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		body, err := service.Read(r.Context(), bucket+"/"+key)
+		object, err := service.Read(r.Context(), bucket, key)
 		if err != nil {
 			// Translate the error to an S3 XML response.
 			if errors.Is(err, storage.ErrObjectNotFound) {
@@ -89,11 +89,11 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		defer body.Close()
+		defer object.Body.Close()
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 
-		if _, err := io.Copy(w, body); err != nil {
+		if _, err := io.Copy(w, object.Body); err != nil {
 			// The client may have disconnected during the stream.
 			// At this point headers/body may already be sent, so do not write an S3 error response.
 			return
@@ -112,7 +112,7 @@ func S3DeleteObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		err := service.Delete(r.Context(), bucket+"/"+key)
+		err := service.Delete(r.Context(), bucket, key)
 		if err != nil {
 			writeS3Error(
 				w,
