@@ -1,132 +1,27 @@
-Updated todo list
+Good questions — three separate things:
 
-Yes. An HTTP server is a sensible interface for the data-storage layer, especially if your object storage may eventually support remote clients or multiple storage nodes. But it is usually best to treat HTTP as a **transport adapter**, not as the storage abstraction itself.
+1. What is slog.Duration()?
+It's a typed attribute constructor, one of the family alongside slog.String, slog.Int, slog.Float64, slog.Bool, slog.Time. slog.Duration("dur", d) builds a slog.Attr (a key + a typed Value) whose kind is KindDuration, holding a time.Duration. The typed constructors are the safer alternative to the loose "key", value variadic form — they're type-checked at compile time and slightly faster (no boxing/reflection). The rendering difference you hit earlier is the handler's job: JSONHandler emits a KindDuration as raw nanoseconds, TextHandler as "626µs".
 
-A useful split is:
+2. Should some values be set once with With?
+logger.With(attrs...) returns a new logger that carries those attributes and stamps them onto every record it emits. For your current single log line, it buys nothing — you'd just be setting fields for one message. Its value appears when the same logger emits multiple records. So the real pattern isn't "use With inside LogRequests," it's:
 
-```text
-Client / API
-    |
-Object service (authentication, buckets, object operations)
-    |
-Metadata store (names, versions, sizes, checksums, locations, lifecycle state)
-    |
-Storage interface
-    |
-Storage backend(s): local disk, remote HTTP nodes, cloud provider, memory
-```
+Build a request-scoped logger once: reqLog := slog.With("request_id", id, "method", r.Method, "path", r.URL.Path).
+Propagate it (via context.Context) into the handlers, so their log lines — a storage error, a slow query — automatically carry the same request_id/method/path without repeating them.
+Without propagation, With in the middleware is premature. With propagation, it's exactly right and sets up your "log chains."
 
-In Go, the core service could depend on an interface like:
+3. Per-request unique identifier (the key enabler for #2).
+This is a small middleware that runs before logging:
 
-```go
-type BlobStore interface {
-    Put(ctx context.Context, key string, data io.Reader) (size int64, checksum string, err error)
-    Get(ctx context.Context, key string) (io.ReadCloser, error)
-    Delete(ctx context.Context, key string) error
-}
-```
+Generate an ID per request. Stdlib-only, matching your existing newID style: crypto/rand → hex (or google/uuid if you want the dependency). Prefer honoring an inbound X-Request-Id header if present (so a caller/proxy can correlate), else generate one.
+Stash it in the request context and also echo it back as an X-Request-Id response header (lets clients report the ID when something breaks).
+Downstream, retrieve the request-scoped logger (or ID) from context.
+Sketch:
 
-That lets you begin with a filesystem implementation, while keeping an HTTP-backed implementation available later:
+Then LogRequests and handlers both call LoggerFrom(r.Context()), so every line in a request shares request_id. Middleware order in main (outer → inner): RequestID → LogRequests → RejectUnsafePaths → mux.
 
-```text
-FilesystemBlobStore  -> writes blobs to local disk
-MemoryBlobStore      -> useful for tests
-HTTPBlobStore        -> forwards blob operations to a storage node
-S3BlobStore          -> uses S3-compatible storage as the data layer
-```
+Two idiomatic notes:
 
-**Architecture options**
-
-1. **Single-process, local disk**
-   - Metadata: SQLite, BoltDB, or Postgres.
-   - Data: files on the server filesystem.
-   - Best starting point for a personal project.
-   - Keep metadata in the database and payload bytes in files; avoid storing large object data directly in a relational database initially.
-
-2. **API server plus HTTP storage nodes**
-   - A metadata/API service records where each object lives.
-   - Dedicated storage nodes expose internal endpoints such as `PUT /blobs/{id}` and `GET /blobs/{id}`.
-   - This is a natural step toward distribution, replication, and capacity expansion.
-   - The HTTP storage API should be private/internal; clients talk only to the public object API.
-
-3. **S3-compatible public API**
-   - Implement an S3-like API surface for clients.
-   - Store data locally or on your own HTTP nodes behind it.
-   - More ambitious because authentication/signing, multipart uploads, range requests, and compatibility details add up quickly.
-
-4. **Chunked/content-addressed storage**
-   - Split objects into fixed or variable-sized chunks.
-   - Store chunks by checksum, for example `sha256/<hash>`.
-   - Metadata maps object/version to ordered chunk hashes.
-   - Enables integrity checks, deduplication, replication, and large-object streaming. This is closer to how serious object stores are built, but adds complexity.
-
-5. **Delegate the data layer**
-   - Your project owns metadata, policies, versioning, and indexing.
-   - Bytes live in S3, MinIO, Azure Blob, or another object store.
-   - Good if your goal is the metadata/control-plane design rather than filesystem/distributed-storage mechanics.
-
-**Metadata design**
-
-Metadata should normally include:
-
-- Bucket and object key
-- Object version or generation number
-- Content length and MIME type
-- ETag/checksum
-- Creation/update timestamps
-- Storage location or chunk list
-- Object state: `pending`, `ready`, `deleting`, `deleted`
-- Optional user metadata and tags
-
-The state is important because writing object bytes and committing metadata are not one database transaction when data is on disk or another HTTP service.
-
-A practical write flow:
-
-```text
-1. Receive upload and stream it to temporary blob storage.
-2. Calculate size and checksum while streaming.
-3. Persist metadata as pending, or prepare its final record.
-4. Atomically move/rename the temporary blob to its final location.
-5. Mark the object version ready in metadata.
-```
-
-For deletion:
-
-```text
-1. Mark the object/version as deleting or deleted in metadata.
-2. Remove its underlying bytes asynchronously.
-3. Reconcile orphaned blobs and missing blobs with a background job.
-```
-
-That reconciliation process is worth building even in a small project. It handles crashes between metadata updates and physical writes.
-
-**Recommendation for your first iteration**
-
-Start with:
-
-- An HTTP API service for clients.
-- SQLite or Postgres for metadata.
-- A `BlobStore` interface.
-- A filesystem-backed blob store that writes each object to a deterministic path.
-- Streaming reads/writes using `io.Reader` and `io.ReadCloser`.
-- Checksums, object states, and atomic temporary-file-to-final-file moves.
-
-Later, add an `HTTPBlobStore` implementation and move storage into separate nodes without changing the metadata service’s core behavior. That preserves a clean boundary: the metadata layer decides *what an object is and where it belongs*; the blob store is responsible only for *reliably storing and retrieving bytes*.
-
-**Logging & observability**
-
-Current state:
-
-- `net/http` does no request logging by default; a `LogRequests` middleware wraps the mux and emits one structured line per request.
-- Logging uses `log/slog` with a JSON handler set as the default logger, so all log calls emit machine-parseable JSON.
-- A `statusWriter` wraps `http.ResponseWriter` to capture the response status code (the standard `ResponseWriter` does not expose it).
-- Request logs currently include method, path, status, and duration.
-
-Future plans:
-
-- **Duration formatting.** `slog`'s JSON handler renders `time.Duration` as raw nanoseconds. Switch request duration to a numeric `dur_ms` (float milliseconds) for readable, queryable values, or apply a global `ReplaceAttr` in the handler options to format all `KindDuration` attributes as strings.
-- **Per-request logger via `With`.** `logger.With(attrs...)` returns a logger that stamps shared attributes onto every record. Build a request-scoped logger once and propagate it so downstream handler logs (storage errors, slow queries) automatically carry the same fields — only worthwhile once handlers log during a request, not for the single middleware line alone.
-- **Request IDs for log chains.** Add a `RequestID` middleware (runs before `LogRequests`) that honors an inbound `X-Request-Id` header or generates one (`crypto/rand` → hex, matching the existing `newID` style), echoes it back as an `X-Request-Id` response header, and stores a request-scoped `slog` logger in the request `context`. A `LoggerFrom(ctx)` helper retrieves it (defaulting to `slog.Default()`), so every line within a request shares a `request_id`.
-  - Key context values by an unexported custom type (not a bare string) to avoid cross-package collisions.
-  - Middleware order (outer → inner): `RequestID` → `LogRequests` → `RejectUnsafePaths` → mux.
-- **Levels & config.** Consider `LevelDebug` in development vs `LevelInfo` in production, driven by configuration/environment.
+Context values should be keyed by an unexported custom type (like ctxKey above), never a bare string, to avoid collisions across packages — go vet's context check enforces this.
+Go 1.21+ also has slog.InfoContext(ctx, …) plus handler-level context extraction as an alternative to passing a logger explicitly; passing the logger in context (above) is the simplest and most common approach.
+Want me to add the RequestID middleware + LoggerFrom helper, wire the ordering in main, and switch dur to dur_ms while I'm there?
