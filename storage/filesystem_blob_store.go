@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"syscall"
 )
 
 type FileSystemBlobStore struct {
@@ -20,9 +19,6 @@ type FileSystemBlobStore struct {
 var ErrBlobIdConflict = errors.New("blob id conflicts with an existing blob id")
 var ErrInvalidBlobId = errors.New("invalid blob id")
 
-// TODO break into stageBlob() and commit() functions
-// TODO flat directory scaling. use blobid prefixing to separate blobs into subdirectories. Completed
-// TODO replace key param with blobID param. Complete
 func (store *FileSystemBlobStore) Put(
 	ctx context.Context,
 	blobID string,
@@ -33,25 +29,37 @@ func (store *FileSystemBlobStore) Put(
 		return 0, "", err
 	}
 	objectpath := store.blobPath(blobID)
-	tmpdir := filepath.Join(store.Root, "tmp")
 
-	if err := ctx.Err(); err != nil {
+	size, checksum, tmpFilePath, err := store.stageBlob(ctx, objectpath, data)
+	if err != nil {
 		return 0, "", err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(objectpath), 0o755); err != nil {
-		return 0, "", fmt.Errorf("create object directories: %w", err)
+	if err := store.commitBlob(tmpFilePath, objectpath); err != nil {
+		return 0, "", err
 	}
+
+	return size, checksum, nil
+}
+
+func (store *FileSystemBlobStore) stageBlob(
+	ctx context.Context,
+	objectPath string,
+	data io.Reader,
+) (size int64, checksum, tmpFilePath string, err error) {
+	tmpdir := filepath.Join(store.Root, "tmp")
+
+	if err := ctx.Err(); err != nil {
+		return 0, "", "", err
+	}
+
 	if err := os.MkdirAll(tmpdir, 0o755); err != nil {
-		return 0, "", fmt.Errorf("create tmp directory: %w", err)
+		return 0, "", "", fmt.Errorf("create tmp directory: %w", err)
 	}
 
 	tmpfile, err := os.CreateTemp(tmpdir, "blob-*")
 	if err != nil {
-		if errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.EISDIR) {
-			return 0, "", fmt.Errorf("%w: %s", ErrBlobIdConflict, blobID)
-		}
-		return 0, "", fmt.Errorf("create tmp object file: %w", err)
+		return 0, "", "", fmt.Errorf("create tmp object file: %w", err)
 	}
 	hasher := sha256.New()
 	writer := io.MultiWriter(tmpfile, hasher)
@@ -60,37 +68,44 @@ func (store *FileSystemBlobStore) Put(
 	if err != nil {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
-		return 0, "", fmt.Errorf("write object data: %w", err)
+		return 0, "", "", fmt.Errorf("write object data: %w", err)
 	}
 	if err := tmpfile.Sync(); err != nil {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
-		return 0, "", err
+		return 0, "", "", err
 	}
 	if err := tmpfile.Close(); err != nil {
 		os.Remove(tmpfile.Name())
-		return 0, "", err
-	}
-	if err := os.Rename(tmpfile.Name(), objectpath); err != nil {
-		os.Remove(tmpfile.Name())
-		return 0, "", err
-	}
-
-	// fsync the parent dir so the rename itself survives a crash.
-	dir, err := os.Open(filepath.Dir(objectpath))
-	if err != nil {
-		return 0, "", fmt.Errorf("open parent dir for sync: %w", err)
-	}
-	if err := dir.Sync(); err != nil {
-		dir.Close()
-		return 0, "", fmt.Errorf("sync parent dir: %w", err)
-	}
-	if err := dir.Close(); err != nil {
-		return 0, "", fmt.Errorf("close parent dir: %w", err)
+		return 0, "", "", err
 	}
 
 	checksum = fmt.Sprintf("%x", hasher.Sum(nil))
-	return size, checksum, nil
+	return size, checksum, tmpfile.Name(), nil
+}
+
+func (store *FileSystemBlobStore) commitBlob(tmpFilePath, objectPath string) error {
+	if err := os.MkdirAll(filepath.Dir(objectPath), 0o755); err != nil {
+		return fmt.Errorf("create object directories: %w", err)
+	}
+
+	if err := os.Rename(tmpFilePath, objectPath); err != nil {
+		os.Remove(tmpFilePath)
+		return err
+	}
+
+	// fsync the parent dir so the rename itself survives a crash.
+	dir, err := os.Open(filepath.Dir(objectPath))
+	if err != nil {
+		return fmt.Errorf("open parent dir for sync: %w", err)
+	}
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		dir.Close()
+		return fmt.Errorf("sync parent dir: %w", err)
+	}
+
+	return nil
 }
 
 func (store *FileSystemBlobStore) Get(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"object-storage-golang/storage"
@@ -75,14 +76,14 @@ func (service *ObjectService) Read(
 	if err != nil {
 		return Object{}, fmt.Errorf("read object metadata %s/%s: %w", bucket, key, err)
 	}
-	
+
 	objectData, err := service.blobs.Get(ctx, objectMetadata.BlobID)
 	if err != nil {
 		return Object{}, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
 	}
 	return Object{
 		Metadata: objectMetadata,
-		Body: objectData,
+		Body:     objectData,
 	}, nil
 }
 
@@ -92,7 +93,7 @@ func (service *ObjectService) Delete(
 	key string,
 ) error {
 	err := service.metadataStore.MarkDeleted(ctx, bucket, key, "")
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrObjectNotFound) {
 		return fmt.Errorf("mark object deleted %s/%s: %w", bucket, key, err)
 	}
 	return nil

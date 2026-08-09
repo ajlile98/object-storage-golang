@@ -154,13 +154,6 @@ func (store *SQLiteMetadataStore) Get(
 	return metadata, nil
 }
 
-// func (store *SQLiteMetadataStore) GetVersion(
-// 	ctx context.Context,
-// 	bucket, key string,
-// ) (ObjectMetadata, error) {
-// 	return ObjectMetadata{}, nil
-// }
-
 func (store *SQLiteMetadataStore) MarkDeleted(
 	ctx context.Context,
 	bucket, key, version_id string,
@@ -179,7 +172,6 @@ func (store *SQLiteMetadataStore) MarkDeleted(
 		ObjectStateReady,
 	)
 
-	// TODO: this needs to return success 204. maybe this is handled in s3api layer
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrObjectNotFound
 	}

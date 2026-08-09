@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"object-storage-golang/object"
 	"object-storage-golang/storage"
+	"strconv"
 )
 
 type s3ErrorResponse struct {
@@ -91,8 +92,15 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 
 		defer object.Body.Close()
 
-		// TODO: hard coded header in Get Response
-		w.Header().Set("Content-Type", "application/octet-stream")
+		contentType := object.Metadata.ContentType
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
+
+		w.Header().Set("Content-Length", strconv.FormatInt(object.Metadata.Size, 10))
+
+		w.Header().Set("ETag", object.Metadata.Checksum)
 
 		if _, err := io.Copy(w, object.Body); err != nil {
 			// The client may have disconnected during the stream.
