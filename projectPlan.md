@@ -112,3 +112,21 @@ Start with:
 - Checksums, object states, and atomic temporary-file-to-final-file moves.
 
 Later, add an `HTTPBlobStore` implementation and move storage into separate nodes without changing the metadata service’s core behavior. That preserves a clean boundary: the metadata layer decides *what an object is and where it belongs*; the blob store is responsible only for *reliably storing and retrieving bytes*.
+
+**Logging & observability**
+
+Current state:
+
+- `net/http` does no request logging by default; a `LogRequests` middleware wraps the mux and emits one structured line per request.
+- Logging uses `log/slog` with a JSON handler set as the default logger, so all log calls emit machine-parseable JSON.
+- A `statusWriter` wraps `http.ResponseWriter` to capture the response status code (the standard `ResponseWriter` does not expose it).
+- Request logs currently include method, path, status, and duration.
+
+Future plans:
+
+- **Duration formatting.** `slog`'s JSON handler renders `time.Duration` as raw nanoseconds. Switch request duration to a numeric `dur_ms` (float milliseconds) for readable, queryable values, or apply a global `ReplaceAttr` in the handler options to format all `KindDuration` attributes as strings.
+- **Per-request logger via `With`.** `logger.With(attrs...)` returns a logger that stamps shared attributes onto every record. Build a request-scoped logger once and propagate it so downstream handler logs (storage errors, slow queries) automatically carry the same fields — only worthwhile once handlers log during a request, not for the single middleware line alone.
+- **Request IDs for log chains.** Add a `RequestID` middleware (runs before `LogRequests`) that honors an inbound `X-Request-Id` header or generates one (`crypto/rand` → hex, matching the existing `newID` style), echoes it back as an `X-Request-Id` response header, and stores a request-scoped `slog` logger in the request `context`. A `LoggerFrom(ctx)` helper retrieves it (defaulting to `slog.Default()`), so every line within a request shares a `request_id`.
+  - Key context values by an unexported custom type (not a bare string) to avoid cross-package collisions.
+  - Middleware order (outer → inner): `RequestID` → `LogRequests` → `RejectUnsafePaths` → mux.
+- **Levels & config.** Consider `LevelDebug` in development vs `LevelInfo` in production, driven by configuration/environment.

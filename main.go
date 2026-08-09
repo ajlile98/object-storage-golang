@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"object-storage-golang/httpmiddleware"
 	"object-storage-golang/object"
@@ -31,6 +32,10 @@ func main() {
 func run() error {
 	ctx := context.Background()
 
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	db, err := openDB(ctx, "./data/metadatastore")
 	if err != nil {
 		return err
@@ -50,10 +55,14 @@ func run() error {
 
 	mux := setupRoutes(service)
 
-	fmt.Println("Server starting on http://localhost:8080")
+	handler := httpmiddleware.LogRequests(
+		httpmiddleware.RejectUnsafePaths(s3api.WriteS3HTTPError)(mux),
+	)
+
+	slog.Info("server starting", "addr", "http://localhost:8080")
 
 	// Start the server and listen on port 8080
-	if err := http.ListenAndServe(":8080", httpmiddleware.RejectUnsafePaths(s3api.WriteS3HTTPError)(mux)); err != nil {
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		return err
 	}
 	return nil
