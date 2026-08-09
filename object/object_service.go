@@ -19,10 +19,6 @@ type Object struct {
 	Body     io.ReadCloser
 }
 
-type UploadResult struct {
-	Metadata ObjectMetadata
-}
-
 func NewObjectService(
 	blobs storage.BlobStore,
 	metadataStore MetadataStore,

@@ -8,9 +8,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"syscall"
 )
 
@@ -18,19 +17,23 @@ type FileSystemBlobStore struct {
 	Root string
 }
 
-var ErrKeyConflict = errors.New("object key conflicts with an existing object path")
-var ErrInvalidKey = errors.New("invalid object key")
+var ErrBlobIdConflict = errors.New("blob id conflicts with an existing blob id")
+var ErrInvalidBlobId = errors.New("invalid blob id")
 
+// TODO break into stageBlob() and commit() functions
+// TODO flat directory scaling. use blobid prefixing to separate blobs into subdirectories. Completed
+// TODO replace key param with blobID param. Complete
 func (store *FileSystemBlobStore) Put(
 	ctx context.Context,
-	key string,
+	blobID string,
 	data io.Reader,
 ) (size int64, checksum string, err error) {
 	// Stream data to a file under store.root
-	if err := validateKey(key); err != nil {
+	if err := validateID(blobID); err != nil {
 		return 0, "", err
 	}
-	objectpath := filepath.Join(store.Root, filepath.FromSlash(key))
+	objectpath := store.blobPath(blobID)
+	tmpdir := filepath.Join(store.Root, "tmp")
 
 	if err := ctx.Err(); err != nil {
 		return 0, "", err
@@ -39,22 +42,51 @@ func (store *FileSystemBlobStore) Put(
 	if err := os.MkdirAll(filepath.Dir(objectpath), 0o755); err != nil {
 		return 0, "", fmt.Errorf("create object directories: %w", err)
 	}
+	if err := os.MkdirAll(tmpdir, 0o755); err != nil {
+		return 0, "", fmt.Errorf("create tmp directory: %w", err)
+	}
 
-	file, err := os.Create(objectpath)
+	tmpfile, err := os.CreateTemp(tmpdir, "blob-*")
 	if err != nil {
 		if errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.EISDIR) {
-			return 0, "", fmt.Errorf("%w: %s", ErrKeyConflict, key)
+			return 0, "", fmt.Errorf("%w: %s", ErrBlobIdConflict, blobID)
 		}
-		return 0, "", fmt.Errorf("create object file: %w", err)
+		return 0, "", fmt.Errorf("create tmp object file: %w", err)
 	}
 	hasher := sha256.New()
-	writer := io.MultiWriter(file, hasher)
-
-	defer file.Close()
+	writer := io.MultiWriter(tmpfile, hasher)
 
 	size, err = io.Copy(writer, data)
 	if err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
 		return 0, "", fmt.Errorf("write object data: %w", err)
+	}
+	if err := tmpfile.Sync(); err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+		return 0, "", err
+	}
+	if err := tmpfile.Close(); err != nil {
+		os.Remove(tmpfile.Name())
+		return 0, "", err
+	}
+	if err := os.Rename(tmpfile.Name(), objectpath); err != nil {
+		os.Remove(tmpfile.Name())
+		return 0, "", err
+	}
+
+	// fsync the parent dir so the rename itself survives a crash.
+	dir, err := os.Open(filepath.Dir(objectpath))
+	if err != nil {
+		return 0, "", fmt.Errorf("open parent dir for sync: %w", err)
+	}
+	if err := dir.Sync(); err != nil {
+		dir.Close()
+		return 0, "", fmt.Errorf("sync parent dir: %w", err)
+	}
+	if err := dir.Close(); err != nil {
+		return 0, "", fmt.Errorf("close parent dir: %w", err)
 	}
 
 	checksum = fmt.Sprintf("%x", hasher.Sum(nil))
@@ -63,13 +95,13 @@ func (store *FileSystemBlobStore) Put(
 
 func (store *FileSystemBlobStore) Get(
 	ctx context.Context,
-	key string,
+	blobID string,
 ) (io.ReadCloser, error) {
 	// open and return the local file
-	if err := validateKey(key); err != nil {
+	if err := validateID(blobID); err != nil {
 		return nil, err
 	}
-	objectpath := filepath.Join(store.Root, filepath.FromSlash(key))
+	objectpath := store.blobPath(blobID)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -88,13 +120,13 @@ func (store *FileSystemBlobStore) Get(
 
 func (store *FileSystemBlobStore) Delete(
 	ctx context.Context,
-	key string,
+	blobID string,
 ) error {
 	// delete local file
-	if err := validateKey(key); err != nil {
+	if err := validateID(blobID); err != nil {
 		return err
 	}
-	objectpath := filepath.Join(store.Root, filepath.FromSlash(key))
+	objectpath := store.blobPath(blobID)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -111,36 +143,15 @@ func (store *FileSystemBlobStore) Delete(
 	return nil
 }
 
-func validateKey(key string) error {
-	if key == "" {
-		return ErrInvalidKey
-	}
+func (store *FileSystemBlobStore) blobPath(blobID string) string {
+	return filepath.Join(store.Root, blobID[0:2], blobID[2:4], blobID)
+}
 
-	// Object keys always use '/', even when the server runs on Windows.
-	if strings.Contains(key, `\`) {
-		return ErrInvalidKey
-	}
+var blobIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-	// Reject absolute paths such as "/secret.txt".
-	if strings.HasPrefix(key, "/") {
-		return ErrInvalidKey
+func validateID(blobID string) error {
+	if !blobIDPattern.MatchString(blobID) {
+		return ErrInvalidBlobId
 	}
-
-	// Reject Windows paths such as "C:/secret.txt".
-	if filepath.IsAbs(key) || filepath.VolumeName(key) != "" {
-		return ErrInvalidKey
-	}
-
-	for _, segment := range strings.Split(key, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return ErrInvalidKey
-		}
-	}
-
-	// Defense in depth: cleaning must not change the accepted key.
-	if path.Clean(key) != key {
-		return ErrInvalidKey
-	}
-
 	return nil
 }

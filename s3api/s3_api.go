@@ -41,9 +41,9 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 		)
 		if err != nil {
 			switch {
-			case errors.Is(err, storage.ErrInvalidKey):
+			case errors.Is(err, storage.ErrInvalidBlobId):
 				writeS3Error(w, http.StatusBadRequest, "InvalidRequest", "invalid object key", resource)
-			case errors.Is(err, storage.ErrKeyConflict):
+			case errors.Is(err, storage.ErrBlobIdConflict):
 				writeS3Error(w, http.StatusConflict, "InvalidRequest", "object key conflicts with an existing path", resource)
 			default:
 				writeS3Error(w, http.StatusInternalServerError, "InternalError", "failed to store object", resource)
@@ -91,6 +91,7 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 
 		defer object.Body.Close()
 
+		// TODO: hard coded header in Get Response
 		w.Header().Set("Content-Type", "application/octet-stream")
 
 		if _, err := io.Copy(w, object.Body); err != nil {

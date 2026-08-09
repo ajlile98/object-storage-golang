@@ -125,12 +125,10 @@ func (store *SQLiteMetadataStore) Get(
 		FROM objects
 		WHERE bucket = ? 
 			AND object_key = ?
-			AND state = ?
 		ORDER BY created_at DESC
 		LIMIT 1`,
 		bucket,
 		key,
-		ObjectStateReady,
 	)
 	var metadata ObjectMetadata
 	err := row.Scan(
@@ -149,6 +147,9 @@ func (store *SQLiteMetadataStore) Get(
 	}
 	if err != nil {
 		return ObjectMetadata{}, fmt.Errorf("get object: %w", err)
+	}
+	if metadata.State != ObjectStateReady {
+		return ObjectMetadata{}, ErrObjectNotFound
 	}
 	return metadata, nil
 }
@@ -169,14 +170,16 @@ func (store *SQLiteMetadataStore) MarkDeleted(
 		SET state = ?
 		WHERE bucket = ? 
 			AND object_key = ? 
-			AND version_id = ?
-			AND state = ?`,
+			AND state = ?
+		ORDER BY created_at DESC
+		LIMIT 1`,
 		ObjectStateDeleted,
 		bucket,
 		key,
-		version_id,
 		ObjectStateReady,
 	)
+
+	// TODO: this needs to return success 204. maybe this is handled in s3api layer
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrObjectNotFound
 	}
