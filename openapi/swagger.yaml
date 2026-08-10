@@ -1,0 +1,138 @@
+basePath: /
+definitions:
+  s3api.s3ErrorResponse:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      resource:
+        type: string
+      xmlname:
+        $ref: '#/definitions/xml.Name'
+    type: object
+  xml.Name:
+    properties:
+      space:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: A small S3-compatible object storage API.
+  title: Object Storage S3 API
+  version: "0.1"
+paths:
+  /{bucket}/{key}:
+    delete:
+      description: Deletes the specified object. Deleting a missing object succeeds.
+      parameters:
+      - description: Bucket name
+        in: path
+        name: bucket
+        required: true
+        type: string
+      - description: Object key; may contain /
+        in: path
+        name: key
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Object deleted
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+      summary: Delete an object
+      tags:
+      - objects
+    get:
+      description: Streams the object bytes for the specified bucket and key.
+      parameters:
+      - description: Bucket name
+        in: path
+        name: bucket
+        required: true
+        type: string
+      - description: Object key; may contain /
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Object data
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+      summary: Get an object
+      tags:
+      - objects
+    put:
+      consumes:
+      - application/octet-stream
+      description: Stores the request body at the specified bucket and key.
+      parameters:
+      - description: Bucket name
+        in: path
+        name: bucket
+        required: true
+        type: string
+      - description: Object key; may contain /
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Object data
+        in: body
+        name: body
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Object stored
+          headers:
+            ETag:
+              description: SHA-256 checksum
+              type: string
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/s3api.s3ErrorResponse'
+      summary: Put an object
+      tags:
+      - objects
+schemes:
+- http
+swagger: "2.0"
