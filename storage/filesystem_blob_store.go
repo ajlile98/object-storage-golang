@@ -125,7 +125,7 @@ func (store *FileSystemBlobStore) Get(
 	file, err := os.Open(objectpath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, ErrObjectNotFound
+			return nil, ErrBlobNotFound
 		}
 		return nil, err
 	}

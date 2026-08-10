@@ -12,4 +12,4 @@ type BlobStore interface {
 	Delete(ctx context.Context, blobID string) error
 }
 
-var ErrObjectNotFound = errors.New("object not found")
+var ErrBlobNotFound = errors.New("blob not found")

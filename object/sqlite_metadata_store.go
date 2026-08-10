@@ -158,14 +158,14 @@ func (store *SQLiteMetadataStore) MarkDeleted(
 	ctx context.Context,
 	bucket, key, version_id string,
 ) error {
-	result, err := store.db.ExecContext(ctx, `
-		UPDATE objects 
-		SET state = ?
-		WHERE bucket = ? 
-			AND object_key = ? 
-			AND state = ?
-		ORDER BY created_at DESC
-		LIMIT 1`,
+	result, err := store.db.ExecContext(ctx,
+		`UPDATE objects SET state = ?
+		WHERE rowid = (
+			SELECT rowid FROM objects
+			WHERE bucket = ? AND object_key = ? AND state = ?
+			ORDER BY created_at DESC
+			LIMIT 1
+		)`,
 		ObjectStateDeleted,
 		bucket,
 		key,

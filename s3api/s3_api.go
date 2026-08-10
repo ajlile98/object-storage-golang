@@ -17,6 +17,11 @@ type s3ErrorResponse struct {
 	Resource string   `xml:"Resource,omitempty"`
 }
 
+// formatETag wraps a checksum in the quoted-string form required by the HTTP ETag header.
+func formatETag(checksum string) string {
+	return `"` + checksum + `"`
+}
+
 func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucket := r.PathValue("bucket")
@@ -52,7 +57,7 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("ETag", `"`+metadata.Checksum+`"`)
+		w.Header().Set("ETag", formatETag(metadata.Checksum))
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -67,10 +72,10 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		object, err := service.Read(r.Context(), bucket, key)
+		obj, err := service.Read(r.Context(), bucket, key)
 		if err != nil {
 			// Translate the error to an S3 XML response.
-			if errors.Is(err, storage.ErrObjectNotFound) {
+			if errors.Is(err, object.ErrObjectNotFound) {
 				writeS3Error(
 					w,
 					http.StatusNotFound,
@@ -90,19 +95,19 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			return
 		}
 
-		defer object.Body.Close()
+		defer obj.Body.Close()
 
-		contentType := object.Metadata.ContentType
+		contentType := obj.Metadata.ContentType
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", contentType)
 
-		w.Header().Set("Content-Length", strconv.FormatInt(object.Metadata.Size, 10))
+		w.Header().Set("Content-Length", strconv.FormatInt(obj.Metadata.Size, 10))
 
-		w.Header().Set("ETag", object.Metadata.Checksum)
+		w.Header().Set("ETag", formatETag(obj.Metadata.Checksum))
 
-		if _, err := io.Copy(w, object.Body); err != nil {
+		if _, err := io.Copy(w, obj.Body); err != nil {
 			// The client may have disconnected during the stream.
 			// At this point headers/body may already be sent, so do not write an S3 error response.
 			return
