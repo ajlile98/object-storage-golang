@@ -94,14 +94,7 @@ func (store *FileSystemBlobStore) commitBlob(tmpFilePath, objectPath string) err
 		return err
 	}
 
-	// fsync the parent dir so the rename itself survives a crash.
-	dir, err := os.Open(filepath.Dir(objectPath))
-	if err != nil {
-		return fmt.Errorf("open parent dir for sync: %w", err)
-	}
-	defer dir.Close()
-	if err := dir.Sync(); err != nil {
-		dir.Close()
+	if err := syncDirectory(filepath.Dir(objectPath)); err != nil {
 		return fmt.Errorf("sync parent dir: %w", err)
 	}
 

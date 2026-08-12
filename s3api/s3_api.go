@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"object-storage-golang/object"
 	"object-storage-golang/storage"
@@ -46,6 +47,12 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 			r.Body,
 		)
 		if err != nil {
+			slog.Error(
+				"put object failed",
+				"error", err,
+				"bucket", bucket,
+				"key", key,
+			)
 			switch {
 			case errors.Is(err, storage.ErrInvalidBlobId):
 				writeS3Error(w, http.StatusBadRequest, "InvalidRequest", "invalid object key", resource)

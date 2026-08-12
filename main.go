@@ -33,7 +33,7 @@ func run() error {
 	ctx := context.Background()
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: slog.LevelDebug,
 	})))
 
 	db, err := openDB(ctx, "./data/metadatastore")
