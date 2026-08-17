@@ -54,9 +54,9 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 				"key", key,
 			)
 			switch {
-			case errors.Is(err, storage.ErrInvalidBlobId):
+			case errors.Is(err, storage.ErrInvalidBlobID):
 				writeS3Error(w, http.StatusBadRequest, "InvalidRequest", "invalid object key", resource)
-			case errors.Is(err, storage.ErrBlobIdConflict):
+			case errors.Is(err, storage.ErrBlobIDConflict):
 				writeS3Error(w, http.StatusConflict, "InvalidRequest", "object key conflicts with an existing path", resource)
 			default:
 				writeS3Error(w, http.StatusInternalServerError, "InternalError", "failed to store object", resource)
