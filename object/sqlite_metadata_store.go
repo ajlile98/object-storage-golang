@@ -13,11 +13,11 @@ type SQLiteMetadataStore struct {
 
 var ErrObjectNotFound = errors.New("object not found")
 
-func (store *SQLiteMetadataStore) Create(
+func (s *SQLiteMetadataStore) Create(
 	ctx context.Context,
 	object ObjectMetadata,
 ) (ObjectMetadata, error) {
-	row := store.db.QueryRowContext(
+	row := s.db.QueryRowContext(
 		ctx,
 		`INSERT INTO objects (
             bucket, object_key, version_id, blob_id,
@@ -61,11 +61,11 @@ func (store *SQLiteMetadataStore) Create(
 	return persisted, nil
 }
 
-func (store *SQLiteMetadataStore) CompleteUpload(
+func (s *SQLiteMetadataStore) CompleteUpload(
 	ctx context.Context,
 	object ObjectMetadata,
 ) (ObjectMetadata, error) {
-	row := store.db.QueryRowContext(
+	row := s.db.QueryRowContext(
 		ctx,
 		`UPDATE objects
 		SET size = ?,
@@ -114,11 +114,11 @@ func (store *SQLiteMetadataStore) CompleteUpload(
 	return persisted, nil
 }
 
-func (store *SQLiteMetadataStore) Get(
+func (s *SQLiteMetadataStore) Get(
 	ctx context.Context,
 	bucket, key string,
 ) (ObjectMetadata, error) {
-	row := store.db.QueryRowContext(
+	row := s.db.QueryRowContext(
 		ctx,
 		`SELECT bucket, object_key, version_id, blob_id,
             size, content_type, checksum, created_at, state
@@ -154,11 +154,11 @@ func (store *SQLiteMetadataStore) Get(
 	return metadata, nil
 }
 
-func (store *SQLiteMetadataStore) MarkDeleted(
+func (s *SQLiteMetadataStore) MarkDeleted(
 	ctx context.Context,
-	bucket, key, version_id string,
+	bucket, key string,
 ) error {
-	result, err := store.db.ExecContext(ctx,
+	result, err := s.db.ExecContext(ctx,
 		`UPDATE objects SET state = ?
 		WHERE rowid = (
 			SELECT rowid FROM objects
@@ -172,9 +172,6 @@ func (store *SQLiteMetadataStore) MarkDeleted(
 		ObjectStateReady,
 	)
 
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrObjectNotFound
-	}
 	if err != nil {
 		return fmt.Errorf("mark object deleted: %w", err)
 	}
@@ -190,8 +187,8 @@ func (store *SQLiteMetadataStore) MarkDeleted(
 	return nil
 }
 
-func (store *SQLiteMetadataStore) Initialize(ctx context.Context) error {
-	_, err := store.db.ExecContext(ctx, `
+func (s *SQLiteMetadataStore) Initialize(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
         CREATE TABLE IF NOT EXISTS objects (
             bucket TEXT NOT NULL,
             object_key TEXT NOT NULL,

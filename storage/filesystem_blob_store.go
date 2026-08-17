@@ -16,38 +16,40 @@ type FileSystemBlobStore struct {
 	Root string
 }
 
-var ErrBlobIdConflict = errors.New("blob id conflicts with an existing blob id")
-var ErrInvalidBlobId = errors.New("invalid blob id")
+var (
+	ErrBlobIDConflict = errors.New("blob id conflicts with an existing blob id")
+	ErrInvalidBlobID  = errors.New("invalid blob id")
+)
 
-func (store *FileSystemBlobStore) Put(
+func (s *FileSystemBlobStore) Put(
 	ctx context.Context,
 	blobID string,
 	data io.Reader,
 ) (size int64, checksum string, err error) {
-	// Stream data to a file under store.root
+	// Stream data to a file under s.Root
 	if err := validateID(blobID); err != nil {
 		return 0, "", err
 	}
-	objectpath := store.blobPath(blobID)
+	objectpath := s.blobPath(blobID)
 
-	size, checksum, tmpFilePath, err := store.stageBlob(ctx, objectpath, data)
+	size, checksum, tmpFilePath, err := s.stageBlob(ctx, objectpath, data)
 	if err != nil {
 		return 0, "", err
 	}
 
-	if err := store.commitBlob(tmpFilePath, objectpath); err != nil {
+	if err := s.commitBlob(tmpFilePath, objectpath); err != nil {
 		return 0, "", err
 	}
 
 	return size, checksum, nil
 }
 
-func (store *FileSystemBlobStore) stageBlob(
+func (s *FileSystemBlobStore) stageBlob(
 	ctx context.Context,
 	objectPath string,
 	data io.Reader,
 ) (size int64, checksum, tmpFilePath string, err error) {
-	tmpdir := filepath.Join(store.Root, "tmp")
+	tmpdir := filepath.Join(s.Root, "tmp")
 
 	if err := ctx.Err(); err != nil {
 		return 0, "", "", err
@@ -84,7 +86,7 @@ func (store *FileSystemBlobStore) stageBlob(
 	return size, checksum, tmpfile.Name(), nil
 }
 
-func (store *FileSystemBlobStore) commitBlob(tmpFilePath, objectPath string) error {
+func (s *FileSystemBlobStore) commitBlob(tmpFilePath, objectPath string) error {
 	if err := os.MkdirAll(filepath.Dir(objectPath), 0o755); err != nil {
 		return fmt.Errorf("create object directories: %w", err)
 	}
@@ -101,7 +103,7 @@ func (store *FileSystemBlobStore) commitBlob(tmpFilePath, objectPath string) err
 	return nil
 }
 
-func (store *FileSystemBlobStore) Get(
+func (s *FileSystemBlobStore) Get(
 	ctx context.Context,
 	blobID string,
 ) (io.ReadCloser, error) {
@@ -109,7 +111,7 @@ func (store *FileSystemBlobStore) Get(
 	if err := validateID(blobID); err != nil {
 		return nil, err
 	}
-	objectpath := store.blobPath(blobID)
+	objectpath := s.blobPath(blobID)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -126,7 +128,7 @@ func (store *FileSystemBlobStore) Get(
 	return file, nil
 }
 
-func (store *FileSystemBlobStore) Delete(
+func (s *FileSystemBlobStore) Delete(
 	ctx context.Context,
 	blobID string,
 ) error {
@@ -134,7 +136,7 @@ func (store *FileSystemBlobStore) Delete(
 	if err := validateID(blobID); err != nil {
 		return err
 	}
-	objectpath := store.blobPath(blobID)
+	objectpath := s.blobPath(blobID)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -151,15 +153,15 @@ func (store *FileSystemBlobStore) Delete(
 	return nil
 }
 
-func (store *FileSystemBlobStore) blobPath(blobID string) string {
-	return filepath.Join(store.Root, blobID[0:2], blobID[2:4], blobID)
+func (s *FileSystemBlobStore) blobPath(blobID string) string {
+	return filepath.Join(s.Root, blobID[0:2], blobID[2:4], blobID)
 }
 
 var blobIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func validateID(blobID string) error {
 	if !blobIDPattern.MatchString(blobID) {
-		return ErrInvalidBlobId
+		return ErrInvalidBlobID
 	}
 	return nil
 }

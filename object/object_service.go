@@ -27,7 +27,7 @@ func NewObjectService(
 	return &ObjectService{blobs: blobs, metadataStore: metadataStore}
 }
 
-func (service *ObjectService) Upload(
+func (s *ObjectService) Upload(
 	ctx context.Context,
 	bucket string,
 	key string,
@@ -45,7 +45,7 @@ func (service *ObjectService) Upload(
 		return ObjectMetadata{}, err
 	}
 
-	pending, err := service.metadataStore.Create(ctx, ObjectMetadata{
+	pending, err := s.metadataStore.Create(ctx, ObjectMetadata{
 		Bucket:      bucket,
 		Key:         key,
 		VersionID:   versionID,
@@ -56,7 +56,7 @@ func (service *ObjectService) Upload(
 		return ObjectMetadata{}, err
 	}
 
-	size, checksum, err := service.blobs.Put(ctx, blobID, body)
+	size, checksum, err := s.blobs.Put(ctx, blobID, body)
 	if err != nil {
 		return ObjectMetadata{}, err
 	}
@@ -64,20 +64,20 @@ func (service *ObjectService) Upload(
 	pending.Size = size
 	pending.Checksum = checksum
 
-	return service.metadataStore.CompleteUpload(ctx, pending)
+	return s.metadataStore.CompleteUpload(ctx, pending)
 }
 
-func (service *ObjectService) Read(
+func (s *ObjectService) Read(
 	ctx context.Context,
 	bucket,
 	key string,
 ) (Object, error) {
-	objectMetadata, err := service.metadataStore.Get(ctx, bucket, key)
+	objectMetadata, err := s.metadataStore.Get(ctx, bucket, key)
 	if err != nil {
 		return Object{}, fmt.Errorf("read object metadata %s/%s: %w", bucket, key, err)
 	}
 
-	objectData, err := service.blobs.Get(ctx, objectMetadata.BlobID)
+	objectData, err := s.blobs.Get(ctx, objectMetadata.BlobID)
 	if err != nil {
 		return Object{}, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
 	}
@@ -87,12 +87,12 @@ func (service *ObjectService) Read(
 	}, nil
 }
 
-func (service *ObjectService) Delete(
+func (s *ObjectService) Delete(
 	ctx context.Context,
 	bucket,
 	key string,
 ) error {
-	err := service.metadataStore.MarkDeleted(ctx, bucket, key, "")
+	err := s.metadataStore.MarkDeleted(ctx, bucket, key)
 	if err != nil && !errors.Is(err, ErrObjectNotFound) {
 		return fmt.Errorf("mark object deleted %s/%s: %w", bucket, key, err)
 	}

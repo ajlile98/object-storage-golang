@@ -11,6 +11,7 @@ import (
 	"object-storage-golang/s3api"
 	"object-storage-golang/storage"
 	"os"
+	"path/filepath"
 
 	httpSwagger "github.com/swaggo/http-swagger"
 	_ "modernc.org/sqlite"
@@ -24,7 +25,7 @@ import (
 // @schemes         http
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprint(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -36,7 +37,7 @@ func run() error {
 		Level: slog.LevelDebug,
 	})))
 
-	db, err := openDB(ctx, "./data/metadatastore")
+	db, err := openDB(ctx, "./data/metadatastore/metadatastore.db")
 	if err != nil {
 		return err
 	}
@@ -61,18 +62,22 @@ func run() error {
 
 	slog.Info("server starting", "addr", "http://localhost:8080")
 
-	// Start the server and listen on port 8080
-	if err := http.ListenAndServe(":8080", handler); err != nil {
-		return err
-	}
-	return nil
+	return http.ListenAndServe(":8080", handler)
 }
 
 func openDB(ctx context.Context, path string) (*sql.DB, error) {
-	os.MkdirAll("./data", 0o755)
-	db, err := sql.Open("sqlite", "./data/metadata.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)")
+	perms := os.FileMode(0o755)
+	err := os.MkdirAll(filepath.Dir(path), perms)
 	if err != nil {
-		return &sql.DB{}, fmt.Errorf("open sqlite: %w", err)
+		return nil, fmt.Errorf("makedirall path=%s perms=%s: %w", path, perms, err)
+	}
+	db, err := sql.Open("sqlite", fmt.Sprintf(
+		"%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)",
+		path,
+	),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	return db, nil
 }
