@@ -20,11 +20,11 @@ func (s *SQLiteStore) CreateObject(
 	row := s.db.QueryRowContext(
 		ctx,
 		`INSERT INTO objects (
-            bucket, object_key, version_id, blob_id,
+            bucket_name, object_key, version_id, blob_id,
             size, content_type, checksum, state
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING
-		bucket,
+		bucket_name,
 		object_key,
 		version_id,
 		blob_id,
@@ -71,12 +71,12 @@ func (s *SQLiteStore) CompleteObjectUpload(
 		SET size = ?,
 			checksum = ?,
 			state = ?
-		WHERE bucket = ? 
+		WHERE bucket_name = ? 
 			AND object_key = ? 
 			AND version_id = ?
 			AND state = ?
 		RETURNING
-            bucket,
+            bucket_name,
             object_key,
             version_id,
             blob_id,
@@ -120,10 +120,10 @@ func (s *SQLiteStore) GetObject(
 ) (ObjectMetadata, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT bucket, object_key, version_id, blob_id,
+		`SELECT bucket_name, object_key, version_id, blob_id,
             size, content_type, checksum, created_at, state
 		FROM objects
-		WHERE bucket = ? 
+		WHERE bucket_name = ? 
 			AND object_key = ?
 		ORDER BY created_at DESC
 		LIMIT 1`,
@@ -162,7 +162,7 @@ func (s *SQLiteStore) MarkObjectDeleted(
 		`UPDATE objects SET state = ?
 		WHERE rowid = (
 			SELECT rowid FROM objects
-			WHERE bucket = ? AND object_key = ? AND state = ?
+			WHERE bucket_name = ? AND object_key = ? AND state = ?
 			ORDER BY created_at DESC
 			LIMIT 1
 		)`,
@@ -189,8 +189,16 @@ func (s *SQLiteStore) MarkObjectDeleted(
 
 func (s *SQLiteStore) Initialize(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
-        CREATE TABLE IF NOT EXISTS objects (
-            bucket TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS buckets (
+			bucket_name TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+			state TEXT NOT NULL DEFAULT 'ready',
+			PRIMARY KEY (name)
+		);
+  
+		CREATE TABLE IF NOT EXISTS objects (
+            bucket_name TEXT NOT NULL,
             object_key TEXT NOT NULL,
             version_id TEXT NOT NULL,
             blob_id TEXT NOT NULL,
@@ -199,8 +207,8 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
             checksum TEXT NOT NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             state TEXT NOT NULL DEFAULT 'pending',
-            PRIMARY KEY (bucket, object_key, version_id)
-        )
+            PRIMARY KEY (bucket_name, object_key, version_id)
+        );
     `)
 	if err != nil {
 		return fmt.Errorf("create objects table: %w", err)
@@ -212,4 +220,6 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 	return &SQLiteStore{db: db}
 }
 
-func (s *SQLiteStore) CreateBucket(ctx context.Context, name string)
+func (s *SQLiteStore) CreateBucket(ctx context.Context, name string) {
+
+}
