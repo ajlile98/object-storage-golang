@@ -11,7 +11,11 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
-var ErrObjectNotFound = errors.New("object not found")
+var (
+	ErrObjectNotFound = errors.New("object not found")
+	ErrBucketNotEmpty = errors.New("bucket not empty")
+)
+
 
 func (s *SQLiteStore) CreateObject(
 	ctx context.Context,
@@ -191,10 +195,9 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS buckets (
 			bucket_name TEXT NOT NULL,
-			owner_id TEXT NOT NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 			state TEXT NOT NULL DEFAULT 'ready',
-			PRIMARY KEY (name)
+			PRIMARY KEY (bucket_name)
 		);
   
 		CREATE TABLE IF NOT EXISTS objects (
@@ -211,7 +214,7 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
         );
     `)
 	if err != nil {
-		return fmt.Errorf("create objects table: %w", err)
+		return fmt.Errorf("create tables: %w", err)
 	}
 	return nil
 }
@@ -220,6 +223,51 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 	return &SQLiteStore{db: db}
 }
 
-func (s *SQLiteStore) CreateBucket(ctx context.Context, name string) {
+func (s *SQLiteStore) CreateBucket(ctx context.Context, name string) (Bucket, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO buckets (
+			bucket_name
+		) VALUES (?)
+		 RETURNING
+		 bucket_name,
+		 created_at,
+		 state`,
+		name,
+	)
 
+	var created Bucket
+	if err := row.Scan(
+		&created.Name,
+		&created.CreatedAt,
+		&created.State,
+	); err != nil {
+		return Bucket{}, fmt.Errorf("create bucket: %w", err)
+	}
+
+	return created, nil
+}
+
+func (s *SQLiteStore) DeleteBucketIfEmpty(ctx context.Context, name string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var n int
+	err = tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM objects WHERE bucket = ? AND state = 'ready'`, name).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrBucketNotEmpty // 409 BucketNotEmpty
+	}
+
+	_, err = tx.ExecContext(ctx, `DELETE FROM buckets where name = ?`, name)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
