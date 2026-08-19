@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"object-storage-golang/object"
+	"object-storage-golang/catalog"
 	"object-storage-golang/storage"
 	"path/filepath"
 	"strings"
@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func newTestMetadataStore(t *testing.T) *object.SQLiteMetadataStore {
+func newTestMetadataStore(t *testing.T) *catalog.SQLiteStore {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "metadata.db")
@@ -29,7 +29,7 @@ func newTestMetadataStore(t *testing.T) *object.SQLiteMetadataStore {
 		_ = db.Close()
 	})
 
-	store := object.NewSQLiteMetadataStore(db)
+	store := catalog.NewSQLiteStore(db)
 
 	if err := store.Initialize(context.Background()); err != nil {
 		t.Fatal(err)
@@ -48,11 +48,11 @@ func newTestBlobStore(t *testing.T) storage.BlobStore {
 	return blobStore
 }
 
-func newTestObjectService(t *testing.T) *object.ObjectService {
+func newTestObjectService(t *testing.T) *catalog.ObjectService {
 	bs := newTestBlobStore(t)
 	ms := newTestMetadataStore(t)
 
-	return object.NewObjectService(bs, ms)
+	return catalog.NewObjectService(bs, ms)
 }
 
 func newTestMux(t *testing.T) *http.ServeMux {
@@ -87,7 +87,7 @@ func TestPutObjectThenGetObject(t *testing.T) {
 		t.Fatalf("status = %d, want %d", putResponse.StatusCode, http.StatusOK)
 	}
 
-	putETag := putResponse.Header.Get("ETag"); 
+	putETag := putResponse.Header.Get("ETag")
 	if putETag == "" {
 		t.Fatal("ETag is empty")
 	}

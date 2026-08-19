@@ -1,4 +1,4 @@
-package object
+package catalog
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 type ObjectService struct {
 	blobs         storage.BlobStore
-	metadataStore MetadataStore
+	metadataStore ObjectStore
 }
 
 type Object struct {
@@ -22,7 +22,7 @@ type Object struct {
 
 func NewObjectService(
 	blobs storage.BlobStore,
-	metadataStore MetadataStore,
+	metadataStore ObjectStore,
 ) *ObjectService {
 	return &ObjectService{blobs: blobs, metadataStore: metadataStore}
 }
@@ -45,7 +45,7 @@ func (s *ObjectService) Upload(
 		return ObjectMetadata{}, err
 	}
 
-	pending, err := s.metadataStore.Create(ctx, ObjectMetadata{
+	pending, err := s.metadataStore.CreateObject(ctx, ObjectMetadata{
 		Bucket:      bucket,
 		Key:         key,
 		VersionID:   versionID,
@@ -64,7 +64,7 @@ func (s *ObjectService) Upload(
 	pending.Size = size
 	pending.Checksum = checksum
 
-	return s.metadataStore.CompleteUpload(ctx, pending)
+	return s.metadataStore.CompleteObjectUpload(ctx, pending)
 }
 
 func (s *ObjectService) Read(
@@ -72,7 +72,7 @@ func (s *ObjectService) Read(
 	bucket,
 	key string,
 ) (Object, error) {
-	objectMetadata, err := s.metadataStore.Get(ctx, bucket, key)
+	objectMetadata, err := s.metadataStore.GetObject(ctx, bucket, key)
 	if err != nil {
 		return Object{}, fmt.Errorf("read object metadata %s/%s: %w", bucket, key, err)
 	}
@@ -92,7 +92,7 @@ func (s *ObjectService) Delete(
 	bucket,
 	key string,
 ) error {
-	err := s.metadataStore.MarkDeleted(ctx, bucket, key)
+	err := s.metadataStore.MarkObjectDeleted(ctx, bucket, key)
 	if err != nil && !errors.Is(err, ErrObjectNotFound) {
 		return fmt.Errorf("mark object deleted %s/%s: %w", bucket, key, err)
 	}

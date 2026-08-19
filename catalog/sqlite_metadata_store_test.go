@@ -1,4 +1,4 @@
-package object
+package catalog
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func newTestMetadataStore(t *testing.T) *SQLiteMetadataStore {
+func newTestMetadataStore(t *testing.T) *SQLiteStore {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "metadata.db")
@@ -24,7 +24,7 @@ func newTestMetadataStore(t *testing.T) *SQLiteMetadataStore {
 		_ = db.Close()
 	})
 
-	store := NewSQLiteMetadataStore(db)
+	store := NewSQLiteStore(db)
 
 	if err := store.Initialize(context.Background()); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestSQLiteMetadataStoreCreate(t *testing.T) {
 	store := newTestMetadataStore(t)
 	ctx := context.Background()
 
-	created, err := store.Create(ctx, ObjectMetadata{
+	created, err := store.CreateObject(ctx, ObjectMetadata{
 		Bucket:      "photos",
 		Key:         "summer.jpg",
 		VersionID:   "version-1",
@@ -81,7 +81,7 @@ func TestMetadataCompleteUpload(t *testing.T) {
 	store := newTestMetadataStore(t)
 	ctx := context.Background()
 
-	created, err := store.Create(ctx, ObjectMetadata{
+	created, err := store.CreateObject(ctx, ObjectMetadata{
 		Bucket:      "photos",
 		Key:         "summer.jpg",
 		VersionID:   "version-1",
@@ -95,12 +95,12 @@ func TestMetadataCompleteUpload(t *testing.T) {
 	created.Size = 42
 	created.Checksum = "checksum-1"
 
-	completed, err := store.CompleteUpload(ctx, created)
+	completed, err := store.CompleteObjectUpload(ctx, created)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	found, err := store.Get(ctx, "photos", "summer.jpg")
+	found, err := store.GetObject(ctx, "photos", "summer.jpg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestMetadataPendingUploadIsInvisible(t *testing.T) {
 	store := newTestMetadataStore(t)
 	ctx := context.Background()
 
-	_, err := store.Create(ctx, ObjectMetadata{
+	_, err := store.CreateObject(ctx, ObjectMetadata{
 		Bucket:      "photos",
 		Key:         "summer.jpg",
 		VersionID:   "version-1",
@@ -150,7 +150,7 @@ func TestMetadataPendingUploadIsInvisible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = store.Get(ctx, "photos", "summer.jpg")
+	_, err = store.GetObject(ctx, "photos", "summer.jpg")
 	if !errors.Is(err, ErrObjectNotFound) {
 		t.Fatal(err)
 	}

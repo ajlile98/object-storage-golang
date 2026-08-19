@@ -1,4 +1,4 @@
-package object
+package catalog
 
 import (
 	"context"

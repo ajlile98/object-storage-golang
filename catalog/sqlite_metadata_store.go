@@ -1,4 +1,4 @@
-package object
+package catalog
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"fmt"
 )
 
-type SQLiteMetadataStore struct {
+type SQLiteStore struct {
 	db *sql.DB
 }
 
 var ErrObjectNotFound = errors.New("object not found")
 
-func (s *SQLiteMetadataStore) Create(
+func (s *SQLiteStore) CreateObject(
 	ctx context.Context,
 	object ObjectMetadata,
 ) (ObjectMetadata, error) {
@@ -61,7 +61,7 @@ func (s *SQLiteMetadataStore) Create(
 	return persisted, nil
 }
 
-func (s *SQLiteMetadataStore) CompleteUpload(
+func (s *SQLiteStore) CompleteObjectUpload(
 	ctx context.Context,
 	object ObjectMetadata,
 ) (ObjectMetadata, error) {
@@ -114,7 +114,7 @@ func (s *SQLiteMetadataStore) CompleteUpload(
 	return persisted, nil
 }
 
-func (s *SQLiteMetadataStore) Get(
+func (s *SQLiteStore) GetObject(
 	ctx context.Context,
 	bucket, key string,
 ) (ObjectMetadata, error) {
@@ -154,7 +154,7 @@ func (s *SQLiteMetadataStore) Get(
 	return metadata, nil
 }
 
-func (s *SQLiteMetadataStore) MarkDeleted(
+func (s *SQLiteStore) MarkObjectDeleted(
 	ctx context.Context,
 	bucket, key string,
 ) error {
@@ -187,7 +187,7 @@ func (s *SQLiteMetadataStore) MarkDeleted(
 	return nil
 }
 
-func (s *SQLiteMetadataStore) Initialize(ctx context.Context) error {
+func (s *SQLiteStore) Initialize(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
         CREATE TABLE IF NOT EXISTS objects (
             bucket TEXT NOT NULL,
@@ -208,6 +208,8 @@ func (s *SQLiteMetadataStore) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func NewSQLiteMetadataStore(db *sql.DB) *SQLiteMetadataStore {
-	return &SQLiteMetadataStore{db: db}
+func NewSQLiteStore(db *sql.DB) *SQLiteStore {
+	return &SQLiteStore{db: db}
 }
+
+func (s *SQLiteStore) CreateBucket(ctx context.Context, name string)

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"object-storage-golang/catalog"
 	"object-storage-golang/httpmiddleware"
-	"object-storage-golang/object"
 	"object-storage-golang/s3api"
 	"object-storage-golang/storage"
 	"os"
@@ -43,7 +43,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	metadataStore := object.NewSQLiteMetadataStore(db)
+	metadataStore := catalog.NewSQLiteStore(db)
 	if err := metadataStore.Initialize(ctx); err != nil {
 		return fmt.Errorf("initialize metadata store: %w", err)
 	}
@@ -52,7 +52,7 @@ func run() error {
 		Root: "./data/blobstore",
 	}
 
-	service := object.NewObjectService(blobStore, metadataStore)
+	service := catalog.NewObjectService(blobStore, metadataStore)
 
 	mux := setupRoutes(service)
 
@@ -86,7 +86,7 @@ func openDB(ctx context.Context, path string) (*sql.DB, error) {
 	return db, nil
 }
 
-func setupRoutes(service *object.ObjectService) http.Handler {
+func setupRoutes(service *catalog.ObjectService) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{bucket}/{key...}", s3api.S3GetObjectHandler(service))
 	mux.HandleFunc("PUT /{bucket}/{key...}", s3api.S3PutObjectHandler(service))

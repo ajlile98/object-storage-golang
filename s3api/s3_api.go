@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"object-storage-golang/object"
+	"object-storage-golang/catalog"
 	"object-storage-golang/storage"
 	"strconv"
 )
@@ -23,7 +23,7 @@ func formatETag(checksum string) string {
 	return `"` + checksum + `"`
 }
 
-func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
+func S3PutObjectHandler(service *catalog.ObjectService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucket := r.PathValue("bucket")
 		key := r.PathValue("key")
@@ -69,7 +69,7 @@ func S3PutObjectHandler(service *object.ObjectService) http.HandlerFunc {
 	}
 }
 
-func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
+func S3GetObjectHandler(service *catalog.ObjectService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucket := r.PathValue("bucket")
 		key := r.PathValue("key")
@@ -82,7 +82,7 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 		obj, err := service.Read(r.Context(), bucket, key)
 		if err != nil {
 			// Translate the error to an S3 XML response.
-			if errors.Is(err, object.ErrObjectNotFound) {
+			if errors.Is(err, catalog.ErrObjectNotFound) {
 				writeS3Error(
 					w,
 					http.StatusNotFound,
@@ -123,7 +123,7 @@ func S3GetObjectHandler(service *object.ObjectService) http.HandlerFunc {
 	}
 }
 
-func S3DeleteObjectHandler(service *object.ObjectService) http.HandlerFunc {
+func S3DeleteObjectHandler(service *catalog.ObjectService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucket := r.PathValue("bucket")
 		key := r.PathValue("key")

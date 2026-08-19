@@ -1,4 +1,4 @@
-package object
+package catalog
 
 import (
 	"context"
@@ -26,9 +26,9 @@ const (
 	ObjectStateDeleted  ObjectState = "deleted"
 )
 
-type MetadataStore interface {
-	Create(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
-	CompleteUpload(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
-	Get(ctx context.Context, bucket, key string) (ObjectMetadata, error)
-	MarkDeleted(ctx context.Context, bucket, key string) error
+type ObjectStore interface {
+	CreateObject(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
+	CompleteObjectUpload(ctx context.Context, object ObjectMetadata) (ObjectMetadata, error)
+	GetObject(ctx context.Context, bucket, key string) (ObjectMetadata, error)
+	MarkObjectDeleted(ctx context.Context, bucket, key string) error
 }
