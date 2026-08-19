@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func newTestMetadataStore(t *testing.T) *SQLiteStore {
+func newTestSQLiteStore(t *testing.T) *SQLiteStore {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "metadata.db")
@@ -33,8 +33,8 @@ func newTestMetadataStore(t *testing.T) *SQLiteStore {
 	return store
 }
 
-func TestSQLiteMetadataStoreCreate(t *testing.T) {
-	store := newTestMetadataStore(t)
+func TestSQLiteStoreCreate(t *testing.T) {
+	store := newTestSQLiteStore(t)
 	ctx := context.Background()
 
 	created, err := store.CreateObject(ctx, ObjectMetadata{
@@ -77,8 +77,8 @@ func TestSQLiteMetadataStoreCreate(t *testing.T) {
 	}
 }
 
-func TestMetadataCompleteUpload(t *testing.T) {
-	store := newTestMetadataStore(t)
+func TestSQLiteCompleteUpload(t *testing.T) {
+	store := newTestSQLiteStore(t)
 	ctx := context.Background()
 
 	created, err := store.CreateObject(ctx, ObjectMetadata{
@@ -135,8 +135,8 @@ func TestMetadataCompleteUpload(t *testing.T) {
 
 }
 
-func TestMetadataPendingUploadIsInvisible(t *testing.T) {
-	store := newTestMetadataStore(t)
+func TestSQLitePendingUploadIsInvisible(t *testing.T) {
+	store := newTestSQLiteStore(t)
 	ctx := context.Background()
 
 	_, err := store.CreateObject(ctx, ObjectMetadata{

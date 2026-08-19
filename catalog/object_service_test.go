@@ -20,7 +20,7 @@ func newTestBlobStore(t *testing.T) storage.BlobStore {
 func TestObjectUpload(t *testing.T) {
 	ctx := context.Background()
 	blobStore := newTestBlobStore(t)
-	metadataStore := newTestMetadataStore(t)
+	metadataStore := newTestSQLiteStore(t)
 	objectService := NewObjectService(blobStore, metadataStore)
 
 	_, err := objectService.Upload(
